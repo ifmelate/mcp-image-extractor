@@ -9,6 +9,11 @@ jest.mock('axios');
 jest.mock('sharp');
 jest.mock('fs');
 jest.mock('path');
+jest.mock('dns', () => ({
+  promises: {
+    lookup: jest.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]),
+  },
+}));
 
 // Define mock types
 type MockedSharp = {
@@ -17,6 +22,11 @@ type MockedSharp = {
   toBuffer: jest.Mock;
   toFormat: jest.Mock;
   toFile: jest.Mock;
+  jpeg: jest.Mock;
+  png: jest.Mock;
+  webp: jest.Mock;
+  avif: jest.Mock;
+  tiff: jest.Mock;
 };
 
 // Import the functions to test
@@ -44,7 +54,12 @@ describe('Image Processing Functions', () => {
       toBuffer: jest.fn().mockResolvedValue(Buffer.from('test')),
       toFormat: jest.fn().mockReturnThis(),
       // @ts-ignore - Ignore type error for mockResolvedValue
-      toFile: jest.fn().mockResolvedValue(undefined)
+      toFile: jest.fn().mockResolvedValue(undefined),
+      jpeg: jest.fn().mockReturnThis(),
+      png: jest.fn().mockReturnThis(),
+      webp: jest.fn().mockReturnThis(),
+      avif: jest.fn().mockReturnThis(),
+      tiff: jest.fn().mockReturnThis(),
     };
     
     ((sharp as unknown) as jest.Mock).mockImplementation(() => mockSharpInstance);
@@ -58,9 +73,6 @@ describe('Image Processing Functions', () => {
     it('should validate URL format', async () => {
       const result = await extractImageFromUrl({
         url: 'invalid-url',
-        resize: true,
-        max_width: 800,
-        max_height: 800
       });
 
       expect(result.content[0].text).toContain('Error: URL must start with http://');
@@ -69,9 +81,6 @@ describe('Image Processing Functions', () => {
     it('should handle network errors', async () => {
       const result = await extractImageFromUrl({
         url: 'https://untrusted-domain.com/image.jpg',
-        resize: true,
-        max_width: 800,
-        max_height: 800
       });
 
       expect(result.content[0].text).toContain('Error: Network error');
@@ -86,9 +95,6 @@ describe('Image Processing Functions', () => {
       const result = await extractImageFromBase64({
         base64: 'base64-encoded-data',
         mime_type: 'image/png',
-        resize: true,
-        max_width: 800,
-        max_height: 800
       });
 
       // The result should contain width and height
@@ -105,9 +111,6 @@ describe('Image Processing Functions', () => {
       const result = await extractImageFromBase64({
         base64: '',
         mime_type: 'image/png',
-        resize: true,
-        max_width: 800,
-        max_height: 800
       });
 
       expect(result.isError).toBe(true);

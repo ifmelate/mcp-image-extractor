@@ -3,6 +3,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import * as dotenv from 'dotenv';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import {
   extractImageFromFile,
   extractImageFromUrl,
@@ -11,11 +13,14 @@ import {
 
 dotenv.config();
 
+// Works correctly from both src/ (ts-node) and dist/ (compiled) since both are one level below project root
+const { version } = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8'));
+
 // Create an MCP server
 const server = new McpServer({
   name: "mcp-image-extractor",
   description: "MCP server for analyzing of images from files, URLs, and base64 data for visual content understanding, text extraction (OCR), and object recognition in screenshots and photos",
-  version: "1.0.0"
+  version
 });
 
 // Add extract_image_from_file tool
@@ -24,13 +29,9 @@ server.tool(
   "Extract and analyze images from local file paths. Supports visual content understanding, OCR text extraction, and object recognition for screenshots, photos, diagrams, and documents.",
   {
     file_path: z.string().describe("Path to the image file to analyze (supports screenshots, photos, diagrams, and documents in PNG, JPG, GIF, WebP formats)"),
-    resize: z.boolean().default(true).describe("For backward compatibility only. Images are always automatically resized to optimal dimensions (max 512x512) for LLM analysis"),
-    max_width: z.number().default(512).describe("For backward compatibility only. Default maximum width is now 512px"),
-    max_height: z.number().default(512).describe("For backward compatibility only. Default maximum height is now 512px")
   },
-  async (args, extra) => {
-    const result = await extractImageFromFile(args);
-    return result;
+  async (args) => {
+    return await extractImageFromFile(args);
   }
 );
 
@@ -40,13 +41,9 @@ server.tool(
   "Extract and analyze images from web URLs. Perfect for analyzing web screenshots, online photos, diagrams, or any image accessible via HTTP/HTTPS for visual content analysis and text extraction.",
   {
     url: z.string().describe("URL of the image to analyze for visual content, text extraction, or object recognition (supports web screenshots, photos, diagrams)"),
-    resize: z.boolean().default(true).describe("For backward compatibility only. Images are always automatically resized to optimal dimensions (max 512x512) for LLM analysis"),
-    max_width: z.number().default(512).describe("For backward compatibility only. Default maximum width is now 512px"),
-    max_height: z.number().default(512).describe("For backward compatibility only. Default maximum height is now 512px")
   },
-  async (args, extra) => {
-    const result = await extractImageFromUrl(args);
-    return result;
+  async (args) => {
+    return await extractImageFromUrl(args);
   }
 );
 
@@ -57,13 +54,9 @@ server.tool(
   {
     base64: z.string().describe("Base64-encoded image data to analyze (useful for screenshots, images from clipboard, or dynamically generated visuals)"),
     mime_type: z.string().default("image/png").describe("MIME type of the image (e.g., image/png, image/jpeg)"),
-    resize: z.boolean().default(true).describe("For backward compatibility only. Images are always automatically resized to optimal dimensions (max 512x512) for LLM analysis"),
-    max_width: z.number().default(512).describe("For backward compatibility only. Default maximum width is now 512px"),
-    max_height: z.number().default(512).describe("For backward compatibility only. Default maximum height is now 512px")
   },
-  async (args, extra) => {
-    const result = await extractImageFromBase64(args);
-    return result;
+  async (args) => {
+    return await extractImageFromBase64(args);
   }
 );
 
@@ -74,4 +67,4 @@ server.connect(transport).catch((error: unknown) => {
   process.exit(1);
 });
 
-console.log('MCP Image Extractor server started in stdio mode'); 
+console.error('MCP Image Extractor server started in stdio mode');

@@ -1,13 +1,13 @@
 import { jest } from '@jest/globals';
 import * as fs from 'fs';
-import * as path from 'path';
 import sharp from 'sharp';
 import { extractImageFromFile } from '../src/image-utils';
 
 // Mock dependencies to run in isolation
 jest.mock('fs');
-jest.mock('path');
 jest.mock('sharp');
+// dns is not mocked here because extractImageFromFile does not perform SSRF checks
+// (SSRF protection only applies to URL-based extraction)
 
 // Mock console.warn and error
 beforeEach(() => {
@@ -32,34 +32,23 @@ type MockedSharp = {
 };
 
 describe('Image Compression', () => {
-  // Sample image buffer for testing
   const testImageBuffer = Buffer.from('test-image-data');
+  const compressedBuffer = Buffer.from('compressed');
   const originalSize = testImageBuffer.length;
-  
+
   beforeEach(() => {
-    // Clear all mocks before each test
     jest.clearAllMocks();
-    
-    // Mock file system
+
     (fs.existsSync as jest.Mock).mockReturnValue(true);
     (fs.readFileSync as jest.Mock).mockReturnValue(testImageBuffer);
     (fs.statSync as jest.Mock).mockReturnValue({ size: originalSize });
-    
-    // Path mock
-    (path.extname as jest.Mock).mockReturnValue('.png');
-    (path.basename as jest.Mock).mockImplementation(function(p: unknown, ext?: unknown) {
-      return String(p).replace(String(ext || ''), '');
-    });
-    
-    // Create compressed buffer that's smaller than the original
-    const compressedBuffer = Buffer.from('compressed');
-    
-    // Create a mock sharp instance with properly typed methods
+
+    // Default mock: PNG image at 800x600 (wider than MAX_IMAGE_DIMENSION so resize fires)
     const mockSharpInstance: MockedSharp = {
-      // @ts-ignore - Ignore type error for mockResolvedValue
+      // @ts-ignore
       metadata: jest.fn().mockResolvedValue({ width: 800, height: 600, format: 'png' }),
       resize: jest.fn().mockReturnThis(),
-      // @ts-ignore - Ignore type error for mockResolvedValue
+      // @ts-ignore
       toBuffer: jest.fn().mockResolvedValue(compressedBuffer),
       jpeg: jest.fn().mockReturnThis(),
       png: jest.fn().mockReturnThis(),
@@ -67,96 +56,175 @@ describe('Image Compression', () => {
       avif: jest.fn().mockReturnThis(),
       tiff: jest.fn().mockReturnThis(),
     };
-    
+
     ((sharp as unknown) as jest.Mock).mockImplementation(() => mockSharpInstance);
   });
 
   it('should compress PNG images', async () => {
-    (path.extname as jest.Mock).mockReturnValue('.png');
-    
-    const result = await extractImageFromFile({
-      file_path: 'test_image.png',
-      resize: true,
-      max_width: 512,
-      max_height: 512
-    });
-    
+    const result = await extractImageFromFile({ file_path: 'test_image.png' });
+
     expect(result.content).toBeDefined();
     expect(result.content.length).toBeGreaterThan(0);
-    
-    // Get the metadata from the result
+
     const metadata = JSON.parse(result.content[0].text as string);
-    
-    // Since our compressed buffer is smaller than the original, size should be reduced
     expect(metadata.size).toBeLessThan(originalSize);
-    
-    // Check if the PNG compression method was called
+
+    // Format comes from sharp metadata, so .png() compression should be invoked
     const sharpInstance = (sharp as unknown as jest.Mock).mock.results[0].value as MockedSharp;
     expect(sharpInstance.png).toHaveBeenCalled();
   });
 
   it('should compress JPEG images', async () => {
-    (path.extname as jest.Mock).mockReturnValue('.jpg');
-    
-    const result = await extractImageFromFile({
-      file_path: 'test_image.jpg',
-      resize: true,
-      max_width: 512,
-      max_height: 512
-    });
-    
+    // Override mock to report JPEG format
+    const mockJpegInstance: MockedSharp = {
+      // @ts-ignore
+      metadata: jest.fn().mockResolvedValue({ width: 800, height: 600, format: 'jpeg' }),
+      resize: jest.fn().mockReturnThis(),
+      // @ts-ignore
+      toBuffer: jest.fn().mockResolvedValue(compressedBuffer),
+      jpeg: jest.fn().mockReturnThis(),
+      png: jest.fn().mockReturnThis(),
+      webp: jest.fn().mockReturnThis(),
+      avif: jest.fn().mockReturnThis(),
+      tiff: jest.fn().mockReturnThis(),
+    };
+    ((sharp as unknown) as jest.Mock).mockImplementation(() => mockJpegInstance);
+
+    const result = await extractImageFromFile({ file_path: 'test_image.jpg' });
+
     expect(result.content).toBeDefined();
-    expect(result.content.length).toBeGreaterThan(0);
-    
-    // Get the metadata from the result
     const metadata = JSON.parse(result.content[0].text as string);
-    
-    // Check if the JPEG compression method was called
+    expect(metadata.size).toBeLessThan(originalSize);
+
     const sharpInstance = (sharp as unknown as jest.Mock).mock.results[0].value as MockedSharp;
     expect(sharpInstance.jpeg).toHaveBeenCalled();
   });
 
-  it('should handle unsupported formats gracefully', async () => {
-    // Mock sharp instance to throw on compression
-    const mockErrorSharpInstance: MockedSharp = {
+  it('should compress WebP images', async () => {
+    const mockWebpInstance: MockedSharp = {
       // @ts-ignore
-      metadata: jest.fn().mockResolvedValue({ width: 800, height: 600, format: 'unknown' }),
+      metadata: jest.fn().mockResolvedValue({ width: 800, height: 600, format: 'webp' }),
       resize: jest.fn().mockReturnThis(),
       // @ts-ignore
-      toBuffer: jest.fn().mockResolvedValue(testImageBuffer),
-      jpeg: jest.fn().mockImplementation(() => {
-        throw new Error('Unsupported format');
-      }),
-      png: jest.fn().mockImplementation(() => {
-        throw new Error('Unsupported format');
-      }),
-      webp: jest.fn().mockImplementation(() => {
-        throw new Error('Unsupported format');
-      }),
-      avif: jest.fn().mockImplementation(() => {
-        throw new Error('Unsupported format');
-      }),
-      tiff: jest.fn().mockImplementation(() => {
-        throw new Error('Unsupported format');
-      }),
+      toBuffer: jest.fn().mockResolvedValue(compressedBuffer),
+      jpeg: jest.fn().mockReturnThis(),
+      png: jest.fn().mockReturnThis(),
+      webp: jest.fn().mockReturnThis(),
+      avif: jest.fn().mockReturnThis(),
+      tiff: jest.fn().mockReturnThis(),
     };
-    
-    ((sharp as unknown) as jest.Mock).mockImplementation(() => mockErrorSharpInstance);
-    
-    (path.extname as jest.Mock).mockReturnValue('.unknown');
-    
-    const result = await extractImageFromFile({
-      file_path: 'test_image.unknown',
-      resize: true,
-      max_width: 512,
-      max_height: 512
-    });
-    
-    // The function should still return a result even if compression fails
+    ((sharp as unknown) as jest.Mock).mockImplementation(() => mockWebpInstance);
+
+    const result = await extractImageFromFile({ file_path: 'test_image.webp' });
+
+    expect(result.content).toBeDefined();
+    const metadata = JSON.parse(result.content[0].text as string);
+    expect(metadata.size).toBeLessThan(originalSize);
+
+    const sharpInstance = (sharp as unknown as jest.Mock).mock.results[0].value as MockedSharp;
+    expect(sharpInstance.webp).toHaveBeenCalled();
+  });
+
+  it('should compress AVIF images', async () => {
+    const mockAvifInstance: MockedSharp = {
+      // @ts-ignore
+      metadata: jest.fn().mockResolvedValue({ width: 800, height: 600, format: 'avif' }),
+      resize: jest.fn().mockReturnThis(),
+      // @ts-ignore
+      toBuffer: jest.fn().mockResolvedValue(compressedBuffer),
+      jpeg: jest.fn().mockReturnThis(),
+      png: jest.fn().mockReturnThis(),
+      webp: jest.fn().mockReturnThis(),
+      avif: jest.fn().mockReturnThis(),
+      tiff: jest.fn().mockReturnThis(),
+    };
+    ((sharp as unknown) as jest.Mock).mockImplementation(() => mockAvifInstance);
+
+    const result = await extractImageFromFile({ file_path: 'test_image.avif' });
+
+    expect(result.content).toBeDefined();
+    const metadata = JSON.parse(result.content[0].text as string);
+    expect(metadata.size).toBeLessThan(originalSize);
+
+    const sharpInstance = (sharp as unknown as jest.Mock).mock.results[0].value as MockedSharp;
+    expect(sharpInstance.avif).toHaveBeenCalled();
+  });
+
+  it('should compress TIFF images', async () => {
+    const mockTiffInstance: MockedSharp = {
+      // @ts-ignore
+      metadata: jest.fn().mockResolvedValue({ width: 800, height: 600, format: 'tiff' }),
+      resize: jest.fn().mockReturnThis(),
+      // @ts-ignore
+      toBuffer: jest.fn().mockResolvedValue(compressedBuffer),
+      jpeg: jest.fn().mockReturnThis(),
+      png: jest.fn().mockReturnThis(),
+      webp: jest.fn().mockReturnThis(),
+      avif: jest.fn().mockReturnThis(),
+      tiff: jest.fn().mockReturnThis(),
+    };
+    ((sharp as unknown) as jest.Mock).mockImplementation(() => mockTiffInstance);
+
+    const result = await extractImageFromFile({ file_path: 'test_image.tiff' });
+
+    expect(result.content).toBeDefined();
+    const metadata = JSON.parse(result.content[0].text as string);
+    expect(metadata.size).toBeLessThan(originalSize);
+
+    const sharpInstance = (sharp as unknown as jest.Mock).mock.results[0].value as MockedSharp;
+    expect(sharpInstance.tiff).toHaveBeenCalled();
+  });
+
+  it('should handle unknown format with default compression', async () => {
+    const mockGifInstance: MockedSharp = {
+      // @ts-ignore
+      metadata: jest.fn().mockResolvedValue({ width: 800, height: 600, format: 'gif' }),
+      resize: jest.fn().mockReturnThis(),
+      // @ts-ignore
+      toBuffer: jest.fn().mockResolvedValue(compressedBuffer),
+      jpeg: jest.fn().mockReturnThis(),
+      png: jest.fn().mockReturnThis(),
+      webp: jest.fn().mockReturnThis(),
+      avif: jest.fn().mockReturnThis(),
+      tiff: jest.fn().mockReturnThis(),
+    };
+    ((sharp as unknown) as jest.Mock).mockImplementation(() => mockGifInstance);
+
+    const result = await extractImageFromFile({ file_path: 'test_image.gif' });
+
+    expect(result.content).toBeDefined();
+    expect(result.isError).toBeUndefined();
+  });
+
+  it('should fall back gracefully when compression fails', async () => {
+    // Mock: resize succeeds, compression toBuffer rejects, final metadata succeeds
+    const mockErrorInstance: MockedSharp = {
+      // @ts-ignore
+      metadata: jest.fn().mockResolvedValue({ width: 800, height: 600, format: 'jpeg' }),
+      resize: jest.fn().mockReturnThis(),
+      toBuffer: jest.fn()
+        // @ts-ignore
+        .mockResolvedValueOnce(testImageBuffer)       // resize step
+        // @ts-ignore
+        .mockRejectedValueOnce(new Error('Compression failed'))  // compress step
+        // @ts-ignore
+        .mockResolvedValue(testImageBuffer),          // final metadata (via separate sharp call)
+      jpeg: jest.fn().mockReturnThis(),
+      png: jest.fn().mockReturnThis(),
+      webp: jest.fn().mockReturnThis(),
+      avif: jest.fn().mockReturnThis(),
+      tiff: jest.fn().mockReturnThis(),
+    };
+    ((sharp as unknown) as jest.Mock).mockImplementation(() => mockErrorInstance);
+
+    const result = await extractImageFromFile({ file_path: 'test_image.jpg' });
+
+    // Function should still return a valid result despite compression failure
     expect(result.content).toBeDefined();
     expect(result.content.length).toBeGreaterThan(0);
-    
-    // Check that console.warn was called
+    expect(result.isError).toBeUndefined();
+
+    // Compression fallback should have been logged
     expect(console.warn).toHaveBeenCalled();
   });
-}); 
+});

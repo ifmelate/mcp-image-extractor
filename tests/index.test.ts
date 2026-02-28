@@ -19,8 +19,22 @@ jest.mock('@modelcontextprotocol/sdk/server/stdio.js', () => ({
 
 jest.mock('axios');
 jest.mock('sharp');
-jest.mock('fs');
-jest.mock('path');
+jest.mock('fs', () => ({
+  ...jest.requireActual('fs'),
+  existsSync: jest.fn(),
+  readFileSync: jest.fn().mockImplementation((filePath: string) => {
+    if (typeof filePath === 'string' && filePath.endsWith('package.json')) {
+      return JSON.stringify({ version: '0.0.0-test' });
+    }
+    return undefined;
+  }),
+  mkdirSync: jest.fn(),
+  statSync: jest.fn(),
+}));
+jest.mock('path', () => ({
+  ...jest.requireActual('path'),
+  join: (...args: string[]) => args.join('/'),
+}));
 
 describe('MCP Image Extractor Server', () => {
   it('should import without errors', () => {

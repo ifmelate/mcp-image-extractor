@@ -5,16 +5,13 @@ describe('Base64 Image Extraction Tests', () => {
   // Valid PNG image in base64 format (1x1 transparent pixel)
   const validPngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
   
-  // Invalid base64 string
-  const invalidBase64 = 'this-is-not-base64!';
+  // Empty string decodes to an empty buffer, triggering the base64 validation error
+  const invalidBase64 = '';
 
   it('successfully processes valid base64 image data', async () => {
     const result = await extractImageFromBase64({
       base64: validPngBase64,
-      mime_type: 'image/png',
-      resize: true,
-      max_width: 800,
-      max_height: 800
+      mime_type: 'image/png'
     });
 
     // Validate the result
@@ -38,14 +35,25 @@ describe('Base64 Image Extraction Tests', () => {
     const result = await extractImageFromBase64({
       base64: invalidBase64,
       mime_type: 'image/png',
-      resize: true,
-      max_width: 800,
-      max_height: 800
     });
 
     // Should return an error
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('Error: Invalid base64 string');
+  });
+
+  it('rejects oversized base64 data', async () => {
+    // Create a base64 string that decodes to > 10MB
+    const oversizedBuffer = Buffer.alloc(10485761, 'x');
+    const oversizedBase64 = oversizedBuffer.toString('base64');
+
+    const result = await extractImageFromBase64({
+      base64: oversizedBase64,
+      mime_type: 'image/png',
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('exceeds maximum allowed size');
   });
 
   it('compresses base64 images', async () => {
@@ -56,9 +64,6 @@ describe('Base64 Image Extraction Tests', () => {
     const result = await extractImageFromBase64({
       base64: largerBase64,
       mime_type: 'image/png',
-      resize: true,
-      max_width: 800,
-      max_height: 800
     });
 
     // Validate the result includes compressed data

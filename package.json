@@ -1,6 +1,6 @@
 {
   "name": "mcp-image-extractor",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "MCP server for extracting and converting images to base64 for LLM analysis",
   "main": "dist/index.js",
   "bin": {
@@ -35,11 +35,12 @@
     "sharp": "^0.33.0",
     "zod": "^3.22.4"
   },
+  "overrides": {
+    "zod-to-json-schema": "^3.24.5"
+  },
   "devDependencies": {
     "@deploya/smithery-cli": "^0.0.1",
     "@smithery/cli": "^1.1.46",
-    "@types/axios": "^0.14.4",
-    "@types/dotenv": "^8.2.3",
     "@types/jest": "^29.5.12",
     "@types/node": "^20.10.0",
     "@types/sharp": "^0.32.0",
@@ -54,7 +55,7 @@
   "smithery": {
     "name": "mcp-image-extractor",
     "description": "MCP server for extracting and converting images to base64 for LLM analysis",
-    "version": "1.1.0",
+    "version": "2.0.0",
     "author": "",
     "license": "MIT"
   },
